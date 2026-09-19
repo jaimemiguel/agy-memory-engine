@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# AGY Memory Engine — Git Pre-Commit Hook
+# ==============================================================================
+# Verifies script executable permissions and installer synchronization
+# ==============================================================================
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# 1. Enforce executable bits on key scripts
+SCRIPTS=(
+    "agy_memory.py"
+    "agy_memory_mcp.py"
+    "dashboard.py"
+    "memory_worker.py"
+    "scripts/cron_runner.sh"
+    "scripts/auto_sync_hook.py"
+    "scripts/install_macbook.sh"
+)
+
+for script in "${SCRIPTS[@]}"; do
+    if [ -f "${REPO_ROOT}/${script}" ] && [ ! -x "${REPO_ROOT}/${script}" ]; then
+        chmod +x "${REPO_ROOT}/${script}"
+        echo "🔧 Corrected executable permission on: ${script}"
+    fi
+done
+
+# 2. Check that install_macbook.sh exists
+if [ ! -f "${REPO_ROOT}/scripts/install_macbook.sh" ]; then
+    echo "❌ Error: scripts/install_macbook.sh is missing."
+    exit 1
+fi
+
+exit 0
