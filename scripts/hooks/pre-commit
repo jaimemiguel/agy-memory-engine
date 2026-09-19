@@ -16,6 +16,7 @@ SCRIPTS=(
     "memory_worker.py"
     "scripts/cron_runner.sh"
     "scripts/auto_sync_hook.py"
+    "scripts/backfill_recent.py"
     "scripts/install_macbook.sh"
 )
 
