@@ -82,3 +82,6 @@ Configuration is driven by `/Volumes/Extern2TB/GitHub/agy-memory-engine/.env` wi
 4. **Installer & Hook**:
    - `scripts/install_macbook.sh` maintains permissions, directory structures, and symlink `~/bin/agy-memory`.
    - `scripts/hooks/pre-commit` enforces executable permissions on all runners and utilities.
+5. **Historical Sessions Backfill Utility**:
+   - `scripts/backfill_recent.py` scans `~/.gemini/antigravity-cli/brain/` for the most recent completed conversation sessions, extracts non-trivial user prompt and assistant response turns, enqueues them into `turn_queue.db`, and executes batched calm-memory LLM extraction into `memory.db`.
+

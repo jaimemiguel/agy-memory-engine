@@ -1,7 +1,4 @@
-#!/usr/bin/env bash
-"""true" '''\'
-exec "$(dirname "$0")/../.venv/bin/python" "$0" "$@"
-'''
+#!/usr/bin/env python3
 # ==============================================================================
 # AGY Memory Engine — Recent Historical Sessions Backfill Utility
 # ==============================================================================
