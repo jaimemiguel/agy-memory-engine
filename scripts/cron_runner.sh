@@ -24,6 +24,7 @@ mkdir -p "${LOG_DIR}"
 # ------------------------------------------------------------------------------
 # 1. Environment & PATH Resolution for Cron
 # ------------------------------------------------------------------------------
+export HOME="${HOME:-/Users/jmb}"
 export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 export PATH="${HOME}/.local/bin:${HOME}/bin:$PATH"
 

@@ -84,4 +84,8 @@ Configuration is driven by `/Volumes/Extern2TB/GitHub/agy-memory-engine/.env` wi
    - `scripts/hooks/pre-commit` enforces executable permissions on all runners and utilities.
 5. **Historical Sessions Backfill Utility**:
    - `scripts/backfill_recent.py` scans `~/.gemini/antigravity-cli/brain/` for the most recent completed conversation sessions, extracts non-trivial user prompt and assistant response turns, enqueues them into `turn_queue.db`, and executes batched calm-memory LLM extraction into `memory.db`.
+6. **CLI Inference Sandbox Isolation & Robust Parsing**:
+   - In `memory_inference.py`, Antigravity CLI invocations are isolated with `cwd="/tmp"` and `HOME="${HOME:-/Users/jmb}"` to prevent the CLI from treating background extraction as an active git workspace session.
+   - `_extract_json_payload` uses progressive extraction (exact JSON -> markdown fenced blocks -> `json.JSONDecoder().raw_decode` stream parsing -> balanced brace fallback) to eliminate parse failures when conversational preamble or markdown code blocks accompany the payload.
+   - `scripts/cron_runner.sh` guarantees `HOME="${HOME:-/Users/jmb}"` so macOS cron invocations cleanly resolve user bins and settings.
 

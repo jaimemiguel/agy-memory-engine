@@ -43,8 +43,61 @@ def _infer_http(prompt, model, endpoint, timeout=80):
     return result
 
 
+def _extract_json_payload(response_text: str) -> dict:
+    """Robustly extract a JSON object from CLI response containing markdown or prose."""
+    response_text = response_text.strip()
+    if not response_text:
+        raise ValueError('Antigravity CLI returned empty output')
+
+    # 1. Direct parse if entire response is valid JSON
+    if response_text.startswith('{') and response_text.endswith('}'):
+        try:
+            res = json.loads(response_text)
+            if isinstance(res, dict):
+                return res
+        except json.JSONDecodeError:
+            pass
+
+    # 2. Look for ```json ... ``` code blocks
+    for match in re.finditer(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL):
+        try:
+            res = json.loads(match.group(1))
+            if isinstance(res, dict):
+                return res
+        except json.JSONDecodeError:
+            continue
+
+    # 3. Stream-scan for top-level JSON objects using raw_decode
+    decoder = json.JSONDecoder()
+    for idx in range(len(response_text)):
+        if response_text[idx] == '{':
+            try:
+                res, _ = decoder.raw_decode(response_text[idx:])
+                if isinstance(res, dict) and any(k in res for k in ('facts', 'episodes', 'learnings', 'entity_links')):
+                    return res
+            except Exception:
+                continue
+
+    # 4. Fallback to greedy regex match
+    match = re.search(r'\{.*\}', response_text, re.DOTALL)
+    if match:
+        try:
+            res = json.loads(match.group(0))
+            if isinstance(res, dict):
+                return res
+        except json.JSONDecodeError as error:
+            raise ValueError(f'Antigravity CLI output is not valid JSON: {error}') from error
+
+    raise ValueError('Antigravity CLI output contains no valid JSON object')
+
+
 def _infer_cli(prompt, model, timeout=80):
-    env = dict(os.environ, AGY_INTERNAL_INVOCATION='1', AGY_SAGE_DISABLED='1')
+    env = dict(
+        os.environ,
+        AGY_INTERNAL_INVOCATION='1',
+        AGY_SAGE_DISABLED='1',
+        HOME=os.environ.get('HOME', '/Users/jmb')
+    )
     cmd = [
         AGY_BIN,
         '--model',
@@ -65,7 +118,7 @@ def _infer_cli(prompt, model, timeout=80):
     }) + '\n'
 
     try:
-        res = subprocess.run(cmd, input=input_event, capture_output=True, text=True, timeout=timeout, env=env)
+        res = subprocess.run(cmd, input=input_event, capture_output=True, text=True, timeout=timeout, env=env, cwd='/tmp')
     except subprocess.TimeoutExpired as error:
         raise TimeoutError('CLI inference timed out') from error
     except OSError as error:
@@ -83,14 +136,14 @@ def _infer_cli(prompt, model, timeout=80):
             '--dangerously-skip-permissions',
         ]
         try:
-            res = subprocess.run(cmd, input=input_event, capture_output=True, text=True, timeout=timeout, env=env)
+            res = subprocess.run(cmd, input=input_event, capture_output=True, text=True, timeout=timeout, env=env, cwd='/tmp')
         except subprocess.TimeoutExpired as error:
             raise TimeoutError('CLI inference timed out') from error
         except OSError as error:
             raise RuntimeError(f'Cannot launch CLI inference ({AGY_BIN})') from error
 
     if res.returncode != 0:
-        raise RuntimeError(f'Antigravity CLI failed with code {res.returncode}')
+        raise RuntimeError(f'Antigravity CLI failed with code {res.returncode}: {res.stderr.strip() if res.stderr else ""}')
 
     response_text = ''
     for line in res.stdout.splitlines():
@@ -124,21 +177,7 @@ def _infer_cli(prompt, model, timeout=80):
     if not response_text:
         response_text = res.stdout.strip()
 
-    if not response_text:
-        raise ValueError('Antigravity CLI returned empty output')
-
-    match = re.search(r'\{.*\}', response_text, re.DOTALL)
-    if not match:
-        raise ValueError('Antigravity CLI output contains no JSON object')
-
-    try:
-        result = json.loads(match.group(0))
-    except json.JSONDecodeError as error:
-        raise ValueError('Antigravity CLI output is not valid JSON') from error
-
-    if not isinstance(result, dict):
-        raise ValueError('Inference must return a JSON object')
-    return result
+    return _extract_json_payload(response_text)
 
 
 def infer(prompt, model, timeout=80):
@@ -156,7 +195,7 @@ def main():
         print(json.dumps(infer(sys.stdin.read(), args.model), ensure_ascii=False))
     except Exception as error:
         # Avoid logging provider responses or authorization headers.
-        print(f'Memory inference failed ({type(error).__name__}); check endpoint/model/CLI configuration.', file=sys.stderr)
+        print(f'Memory inference failed ({type(error).__name__}: {error}); check endpoint/model/CLI configuration.', file=sys.stderr)
         return 1
     return 0
 

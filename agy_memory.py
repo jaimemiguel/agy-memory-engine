@@ -825,7 +825,8 @@ def _infer_json(prompt, timeout):
     except OSError as error:
         raise SyncExtractionError('Cannot launch inference process') from error
     if result.returncode != 0 or not result.stdout.strip():
-        raise SyncExtractionError('Inference failed; check AGY_MEMORY_INFERENCE_URL or Antigravity CLI configuration')
+        err_detail = f": {result.stderr.strip()}" if result.stderr.strip() else ""
+        raise SyncExtractionError(f'Inference failed{err_detail}; check AGY_MEMORY_INFERENCE_URL or Antigravity CLI configuration')
     return result.stdout.strip()
 
 

@@ -65,8 +65,11 @@ class TestDashboardHardening(unittest.TestCase):
         os.environ["AGY_MEMORY_DASHBOARD_TOKEN_PATH"] = str(self.token_file)
         if "AGY_MEMORY_DASHBOARD_TOKEN" in os.environ:
             del os.environ["AGY_MEMORY_DASHBOARD_TOKEN"]
+        self.orig_module_token = dashboard.DASHBOARD_TOKEN
+        dashboard.DASHBOARD_TOKEN = ""
 
     def tearDown(self):
+        dashboard.DASHBOARD_TOKEN = getattr(self, "orig_module_token", "")
         if self.orig_home is not None:
             os.environ["HOME"] = self.orig_home
         else:
