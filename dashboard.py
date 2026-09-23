@@ -27,6 +27,7 @@ sys.path.insert(0, str(BASE_DIR))
 from config import (
     DB_PATH,
     QUEUE_DB_PATH,
+    archive_path,
     MODEL_NAME,
     DASHBOARD_PORT,
     DASHBOARD_HOST,
@@ -40,39 +41,68 @@ from config import (
 
 def get_all_profiles() -> dict:
     """Dynamically discover all configured AGY user profiles on the host."""
-    profiles = {
-        "ubuntu": {
-            "id": "ubuntu",
-            "label": "Stephan (Ubuntu)",
-            "db_path": os.path.expanduser("~/.gemini/memory.db"),
-            "queue_db_path": os.path.expanduser("~/.gemini/turn_queue.db"),
-            "archive_dir": os.path.expanduser("~/.gemini/archive"),
-        }
+    try:
+        import getpass
+        current_user = getpass.getuser()
+    except Exception:
+        current_user = os.environ.get("USER", "default")
+
+    if current_user == "jmb":
+        active_label = "Jim (Active)"
+    elif current_user == "ubuntu":
+        active_label = "Stephan (Ubuntu)"
+    else:
+        active_label = f"{current_user.capitalize()} (Active)"
+
+    primary_profile = {
+        "id": current_user,
+        "label": active_label,
+        "db_path": str(DB_PATH),
+        "queue_db_path": str(QUEUE_DB_PATH),
+        "archive_dir": str(archive_path(DB_PATH)),
     }
-    home_dir = Path("/home")
-    if home_dir.exists():
-        for udir in sorted(home_dir.iterdir()):
-            if not udir.is_dir() or udir.name in ("ubuntu", "opc"):
-                continue
-            try:
-                gemini_dir = udir / ".gemini"
-                db_path = gemini_dir / "memory.db"
-                if db_path.exists() or gemini_dir.exists():
-                    uname = udir.name
-                    profiles[uname] = {
-                        "id": uname,
-                        "label": uname.capitalize(),
-                        "db_path": str(db_path),
-                        "queue_db_path": str(gemini_dir / "turn_queue.db"),
-                        "archive_dir": str(gemini_dir / "archive"),
-                    }
-            except (PermissionError, OSError):
-                continue
+
+    profiles = {current_user: primary_profile}
+
+    # Discover multi-user profiles under /Users (macOS) and /home (Linux)
+    for base in [Path("/Users"), Path("/home")]:
+        if not base.exists():
+            continue
+        try:
+            for udir in sorted(base.iterdir()):
+                if not udir.is_dir() or udir.name in (current_user, "Shared", ".localized", "opc"):
+                    continue
+                try:
+                    gemini_dir = udir / ".gemini"
+                    db_path = gemini_dir / "memory.db"
+                    if db_path.exists() or gemini_dir.exists():
+                        uname = udir.name
+                        label = "Stephan (Ubuntu)" if uname == "ubuntu" else uname.capitalize()
+                        profiles[uname] = {
+                            "id": uname,
+                            "label": label,
+                            "db_path": str(db_path),
+                            "queue_db_path": str(gemini_dir / "turn_queue.db"),
+                            "archive_dir": str(gemini_dir / "archive"),
+                        }
+                except (PermissionError, OSError):
+                    continue
+        except (PermissionError, OSError):
+            continue
+
     return profiles
 
-def get_profile(user: str) -> dict:
+def get_profile(user: str = "") -> dict:
+    """Retrieve profile by ID with graceful fallback to primary active profile."""
     profs = get_all_profiles()
-    return profs.get(user.lower().strip(), profs["ubuntu"])
+    key = user.lower().strip() if user else ""
+    if key and key in profs:
+        return profs[key]
+    for pid, pdata in profs.items():
+        if pid.lower() == key:
+            return pdata
+    # Fall back to the primary active profile (first item)
+    return next(iter(profs.values()))
 
 from schema import db_session
 from config import VECTOR_SEARCH_ENABLED
@@ -961,12 +991,15 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div class="badge" style="display:flex; align-items:center; gap:6px; padding:2px 8px;">
         <span>👤 Profile:</span>
         <select id="sel-profile" class="profile-select" onchange="onProfileChange(this.value)">
-          <option value="ubuntu">Stephan (Ubuntu)</option>
-          <option value="henrik">Henrik</option>
+          <option value="">Active</option>
         </select>
       </div>
       <div class="badge">Model: <b id="lbl-model">-</b></div>
       <div class="badge">DB: <b id="lbl-db-size">-</b></div>
+      <div class="badge" id="badge-db-path" style="display:flex; align-items:center; gap:6px; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="Active SQLite Database Path">
+        <span>📁</span>
+        <span id="lbl-db-path" style="font-family:monospace; font-size:0.78rem; opacity:0.85; overflow:hidden; text-overflow:ellipsis;">-</span>
+      </div>
       <div class="badge" id="badge-version" style="display:flex; align-items:center; gap:6px;" title="Engine Git & Service Status">
         <span>Engine:</span>
         <b id="lbl-version-hash" style="color:var(--accent); font-family:monospace;">-</b>
@@ -1129,7 +1162,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   <script>
     const DASHBOARD_TOKEN = {{DASHBOARD_TOKEN}};
-    let currentProfile = (new URLSearchParams(window.location.search)).get('user') || 'ubuntu';
+    let currentProfile = (new URLSearchParams(window.location.search)).get('user') || '';
     let rawData = null;
     let searchTimer = null;
     const openTurnDetails = new Set();
@@ -1246,7 +1279,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     function onProfileChange(val) {
       currentProfile = val;
       const url = new URL(window.location);
-      url.searchParams.set('user', val);
+      if (val) {
+        url.searchParams.set('user', val);
+      } else {
+        url.searchParams.delete('user');
+      }
       window.history.replaceState({}, '', url);
       lastRenderedQueueHash = '';
       lastRenderedFactsHash = '';
@@ -1256,19 +1293,26 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       lastRenderedAuditHash = '';
       lastRenderedSnapshotsHash = '';
       fetchData(true);
-      showToast('Switched to profile: ' + (val === 'henrik' ? 'Henrik' : 'Stephan (Ubuntu)'), 'info', 2000);
+      const sel = document.getElementById('sel-profile');
+      const label = sel && sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : val;
+      showToast('Switched to profile: ' + label, 'info', 2000);
     }
 
     async function fetchData(forceDomRefresh = false) {
       try {
-        const res = await fetch('/api/stats?user=' + encodeURIComponent(currentProfile));
+        const queryParam = currentProfile ? ('?user=' + encodeURIComponent(currentProfile)) : '';
+        const res = await fetch('/api/stats' + queryParam);
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          showToast('Failed to load profile ' + currentProfile + ': ' + (errData.error || res.statusText), 'error', 4000);
+          showToast('Failed to load profile ' + (currentProfile || 'default') + ': ' + (errData.error || res.statusText), 'error', 4000);
           return;
         }
         const data = await res.json();
         rawData = data;
+
+        if (data.profile) {
+          currentProfile = data.profile;
+        }
 
         const sel = document.getElementById('sel-profile');
         if (sel && data.profiles && Array.isArray(data.profiles)) {
@@ -1282,6 +1326,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
         document.getElementById('lbl-model').innerText = data.model || 'gemini-3.7-flash-low';
         document.getElementById('lbl-db-size').innerText = data.db_size || '-';
+        const dbPathEl = document.getElementById('lbl-db-path');
+        if (dbPathEl && data.db_path) {
+          dbPathEl.innerText = data.db_path;
+          dbPathEl.parentElement.title = 'Active SQLite Database: ' + data.db_path;
+        }
 
         if (data.version_info) {
           const v = data.version_info;
@@ -2738,7 +2787,7 @@ class MemoryDashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        user = params.get("user", ["ubuntu"])[0]
+        user = params.get("user", [""])[0]
         if path == "/api/stats":
             self._handle_stats(user)
             return
@@ -2769,7 +2818,7 @@ class MemoryDashboardHandler(BaseHTTPRequestHandler):
         url = urllib.parse.urlparse(self.path)
         length = int(self.headers.get("Content-Length", 0))
         req_data = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
-        user = req_data.get("user", "ubuntu")
+        user = req_data.get("user", "")
         prof = get_profile(user)
 
         if url.path == "/api/force-worker":
@@ -2876,7 +2925,7 @@ class MemoryDashboardHandler(BaseHTTPRequestHandler):
 
         self._send_json({"error": "Not Found"}, status=404)
 
-    def _handle_stats(self, user: str = "ubuntu"):
+    def _handle_stats(self, user: str = ""):
         try:
             prof = get_profile(user)
             target_db = prof["db_path"]
@@ -2962,7 +3011,7 @@ class MemoryDashboardHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._send_json({"error": str(e)}, status=500)
 
-    def _handle_search(self, q: str, user: str = "ubuntu"):
+    def _handle_search(self, q: str, user: str = ""):
         if not q.strip():
             self._send_json({"facts": [], "episodes": [], "learnings": [], "tokens": []})
             return
