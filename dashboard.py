@@ -3133,7 +3133,9 @@ def run_dashboard(
         if allow_private is not None
         else DASHBOARD_ALLOW_PRIVATE_NETWORKS
     )
-    print(f"🚀 AGY Memory Debug Dashboard running at http://{host}:{port}")
+    token = get_or_create_dashboard_token()
+    token_suffix = f"?token={token}" if token else ""
+    print(f"🚀 AGY Memory Debug Dashboard running at http://{host}:{port}/{token_suffix}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

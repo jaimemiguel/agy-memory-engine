@@ -1684,7 +1684,7 @@ def main():
 
     subparsers.add_parser("list", help="List all stored facts, episodes, learnings, and entity links")
 
-    ui_p = subparsers.add_parser("ui", help="Launch real-time debug web dashboard")
+    ui_p = subparsers.add_parser("ui", aliases=["dashboard"], help="Launch real-time debug web dashboard")
     ui_p.add_argument("--port", type=int, default=None, help="Port to listen on (default from .env)")
     ui_p.add_argument("--host", type=str, default=None, help="Host to bind to (default from .env)")
     ui_p.add_argument("--allowed-hosts", type=str, default=None, help="Comma-separated list of allowed Host header values")
