@@ -91,11 +91,15 @@ from queue_manager import (
 )
 try:
     from embedder import embed_text, reciprocal_rank_fusion, log_vec_query_failure
+    from schema import get_db_generation
+    from vector_index import get_active_model_fingerprint
     HAS_DASHBOARD_EMBEDDER = True
 except ImportError:
     embed_text = None
     reciprocal_rank_fusion = None
     log_vec_query_failure = None
+    get_db_generation = None
+    get_active_model_fingerprint = None
     HAS_DASHBOARD_EMBEDDER = False
 
 
@@ -332,6 +336,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0d1117">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/dist/vis-network.min.js"></script>
   <style>
     :root {
       --bg: #0d1117;
@@ -697,6 +702,61 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     /* Queue & Debounce */
+    .network-container {
+      width: 100%;
+      height: 640px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
+    }
+    .network-controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+      font-size: 0.8rem;
+    }
+    .network-legend {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .network-drawer {
+      position: absolute;
+      top: 0;
+      right: -360px;
+      width: 350px;
+      height: 100%;
+      background: #1c2128;
+      border-left: 1px solid var(--card-border);
+      box-shadow: -4px 0 16px rgba(0,0,0,0.5);
+      transition: right 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 100;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .network-drawer.open {
+      right: 0;
+    }
     .queue-bar-container {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
@@ -985,6 +1045,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <input type="text" id="inp-filter-graph" placeholder="Filter relations..." oninput="filterGraphView()" style="background:var(--card-bg); border:1px solid var(--card-border); border-radius:6px; padding:4px 10px; color:var(--text-bright); font-size:0.8rem; width:180px; outline:none;">
         <button class="pill active g-view-btn" style="cursor:pointer;" onclick="setGraphViewMode('grouped', event)">Grouped</button>
         <button class="pill g-view-btn" style="cursor:pointer;" onclick="setGraphViewMode('table', event)">Table</button>
+        <button class="pill g-view-btn" style="cursor:pointer;" onclick="setGraphViewMode('network', event)">🕸️ Network Graph</button>
       </div>
     </div>
     <div id="graph-items"></div>
@@ -1159,6 +1220,25 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     function filterGraphView() {
       const inp = document.getElementById('inp-filter-graph');
       graphFilterQuery = (inp ? inp.value : '').trim().toLowerCase();
+      lastRenderedGraphHash = '';
+      if (rawData && rawData.links) renderGraph(rawData.links, true);
+    }
+
+    let networkClusterFilter = 'all';
+    let networkRelationFilter = 'all';
+    let networkHideRelatedTo = false;
+
+    function onNetworkFilterChange() {
+      const selC = document.getElementById('sel-network-cluster');
+      const selR = document.getElementById('sel-network-relation');
+      if (selC) networkClusterFilter = selC.value;
+      if (selR) networkRelationFilter = selR.value;
+      lastRenderedGraphHash = '';
+      if (rawData && rawData.links) renderGraph(rawData.links, true);
+    }
+
+    function toggleHideRelatedTo(checked) {
+      networkHideRelatedTo = !!checked;
       lastRenderedGraphHash = '';
       if (rawData && rawData.links) renderGraph(rawData.links, true);
     }
@@ -1563,19 +1643,111 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
       let filtered = links;
       if (graphFilterQuery) {
-        filtered = links.filter(l => 
+        filtered = filtered.filter(l => 
           l.source_id.toLowerCase().includes(graphFilterQuery) ||
           l.relation.toLowerCase().includes(graphFilterQuery) ||
           l.target_id.toLowerCase().includes(graphFilterQuery)
         );
       }
 
-      const hash = currentGraphViewMode + '::' + graphFilterQuery + '::' + JSON.stringify(filtered);
+      if (currentGraphViewMode === 'network') {
+        if (networkClusterFilter && networkClusterFilter !== 'all') {
+          filtered = filtered.filter(l => {
+            const d1 = (l.source_id.split('.')[0] || '').toLowerCase();
+            const d2 = (l.target_id.split('.')[0] || '').toLowerCase();
+            return d1 === networkClusterFilter || d2 === networkClusterFilter;
+          });
+        }
+        if (networkRelationFilter === 'functional') {
+          const functionalRels = ['depends_on', 'runs_on', 'hosted_on', 'monitors', 'uses', 'stores', 'advises', 'executes'];
+          filtered = filtered.filter(l => functionalRels.includes(l.relation));
+        } else if (networkRelationFilter === 'structural') {
+          const structuralRels = ['part_of', 'member_of', 'located_at', 'subsystem_of'];
+          filtered = filtered.filter(l => structuralRels.includes(l.relation));
+        } else if (networkRelationFilter === 'related_to') {
+          filtered = filtered.filter(l => l.relation === 'related_to');
+        }
+        if (networkHideRelatedTo && networkRelationFilter !== 'related_to') {
+          filtered = filtered.filter(l => l.relation !== 'related_to');
+        }
+      }
+
+      const hash = currentGraphViewMode + '::' + graphFilterQuery + '::' + networkClusterFilter + '::' + networkRelationFilter + '::' + networkHideRelatedTo + '::' + JSON.stringify(filtered);
       if (!force && hash === lastRenderedGraphHash) return;
       lastRenderedGraphHash = hash;
 
       if (filtered.length === 0) {
         cont.innerHTML = `<p style="color:var(--text-muted); padding:30px; text-align:center;">No relations matching "${escapeHtml(graphFilterQuery)}".</p>`;
+        return;
+      }
+
+      if (currentGraphViewMode === 'network') {
+        const domainCounts = {};
+        for (const l of links) {
+          const d1 = (l.source_id.split('.')[0] || 'other').toLowerCase();
+          const d2 = (l.target_id.split('.')[0] || 'other').toLowerCase();
+          domainCounts[d1] = (domainCounts[d1] || 0) + 1;
+          domainCounts[d2] = (domainCounts[d2] || 0) + 1;
+        }
+        const topDomains = Object.entries(domainCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(e => e[0]);
+
+        cont.innerHTML = `
+          <div class="network-controls" style="display:flex; flex-direction:column; gap:10px; background:var(--card-bg); border:1px solid var(--card-border); border-radius:8px; padding:12px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div class="network-legend">
+                <span class="legend-item"><span class="legend-dot" style="background:#58a6ff;"></span> Facts</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#d29922;"></span> Episodes</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#3fb950;"></span> Learnings</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#bc8cff;"></span> Other Entities</span>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <button class="btn btn-secondary" style="font-size:0.75rem; padding:3px 10px;" onclick="resetNetworkView()">Center Graph</button>
+                <span id="network-node-count" style="color:var(--text-muted); font-size:0.75rem;"></span>
+              </div>
+            </div>
+
+            <!-- Filters Bar -->
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06);">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <label style="color:var(--text-muted); font-size:0.75rem; font-weight:600;">Cluster / Topic:</label>
+                <select id="sel-network-cluster" onchange="onNetworkFilterChange()" style="background:var(--bg); border:1px solid var(--card-border); border-radius:6px; color:var(--text-bright); font-size:0.75rem; padding:3px 8px; outline:none;">
+                  <option value="all">🌐 All Domains (Global Graph)</option>
+                  ${topDomains.map(d => `<option value="${escapeHtml(d)}" ${networkClusterFilter === d ? 'selected' : ''}>📁 ${escapeHtml(d)} (${domainCounts[d]} refs)</option>`).join('')}
+                </select>
+              </div>
+
+              <div style="display:flex; align-items:center; gap:6px;">
+                <label style="color:var(--text-muted); font-size:0.75rem; font-weight:600;">Relation Type:</label>
+                <select id="sel-network-relation" onchange="onNetworkFilterChange()" style="background:var(--bg); border:1px solid var(--card-border); border-radius:6px; color:var(--text-bright); font-size:0.75rem; padding:3px 8px; outline:none;">
+                  <option value="all">All Relations</option>
+                  <option value="functional" ${networkRelationFilter === 'functional' ? 'selected' : ''}>⚡ Functional Only (depends_on, runs_on, etc.)</option>
+                  <option value="structural" ${networkRelationFilter === 'structural' ? 'selected' : ''}>📂 Structural Only (part_of, member_of, located_at)</option>
+                  <option value="related_to" ${networkRelationFilter === 'related_to' ? 'selected' : ''}>🔗 related_to Only</option>
+                </select>
+              </div>
+
+              <label style="display:flex; align-items:center; gap:5px; font-size:0.75rem; color:var(--text-bright); cursor:pointer; user-select:none; margin-left:auto;">
+                <input type="checkbox" id="chk-hide-related" ${networkHideRelatedTo ? 'checked' : ''} onchange="toggleHideRelatedTo(this.checked)">
+                Hide generic <code>related_to</code> edges
+              </label>
+            </div>
+          </div>
+
+          <div class="network-container" id="network-graph-canvas">
+            <div class="network-drawer" id="network-detail-drawer">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <span id="drawer-entity-badge" class="pill active">Entity</span>
+                <button onclick="closeNetworkDrawer()" style="background:none; border:none; color:var(--text-muted); font-size:1.1rem; cursor:pointer;">✕</button>
+              </div>
+              <h4 id="drawer-title" style="word-break:break-all; font-size:0.95rem; color:var(--text-bright); margin-bottom:10px;"></h4>
+              <div id="drawer-body" style="font-size:0.8rem; color:var(--text); line-height:1.4; flex:1;"></div>
+            </div>
+          </div>
+        `;
+        initNetworkGraph(filtered);
         return;
       }
 
@@ -1640,6 +1812,215 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           `).join('')}
         </div>
       `;
+    }
+
+    let networkInstance = null;
+
+    function initNetworkGraph(links) {
+      const container = document.getElementById('network-graph-canvas');
+      if (!container || typeof vis === 'undefined') return;
+
+      const factsMap = new Map((rawData?.facts || []).map(f => [f.id, f]));
+      const episodesMap = new Map((rawData?.episodes || []).map(e => [e.id, e]));
+      const learningsMap = new Map((rawData?.learnings || []).map(l => [l.id, l]));
+
+      const nodesMap = new Map();
+      const edges = [];
+
+      function getOrCreateNode(id) {
+        if (nodesMap.has(id)) return nodesMap.get(id);
+
+        let group = 'other';
+        let color = '#bc8cff';
+        let shape = 'dot';
+        let title = id;
+
+        if (factsMap.has(id)) {
+          group = 'fact';
+          color = '#58a6ff';
+          title = `[Fact] ${factsMap.get(id).fact}`;
+        } else if (episodesMap.has(id)) {
+          group = 'episode';
+          color = '#d29922';
+          shape = 'diamond';
+          title = `[Episode] ${episodesMap.get(id).title || id}`;
+        } else if (learningsMap.has(id)) {
+          group = 'learning';
+          color = '#3fb950';
+          shape = 'square';
+          title = `[Learning] ${learningsMap.get(id).insight}`;
+        }
+
+        const node = {
+          id: id,
+          label: id.length > 28 ? id.slice(0, 26) + '…' : id,
+          fullLabel: id,
+          group: group,
+          color: {
+            background: color,
+            border: '#30363d',
+            highlight: { background: color, border: '#ffffff' },
+            hover: { background: color, border: '#ffffff' }
+          },
+          shape: shape,
+          font: { color: '#c9d1d9', size: 12, face: 'monospace' },
+          title: title
+        };
+        nodesMap.set(id, node);
+        return node;
+      }
+
+      links.forEach((l, idx) => {
+        getOrCreateNode(l.source_id);
+        getOrCreateNode(l.target_id);
+
+        edges.push({
+          id: 'edge_' + idx,
+          from: l.source_id,
+          to: l.target_id,
+          label: l.relation,
+          font: { color: '#8b949e', size: 10, align: 'middle' },
+          arrows: 'to',
+          color: { color: 'rgba(139, 148, 158, 0.4)', highlight: '#58a6ff' },
+          smooth: { enabled: true, type: 'continuous', roundness: 0.2 }
+        });
+      });
+
+      const countSpan = document.getElementById('network-node-count');
+      if (countSpan) {
+        countSpan.innerText = `${nodesMap.size} nodes • ${edges.length} edges`;
+      }
+
+      const data = {
+        nodes: new vis.DataSet(Array.from(nodesMap.values())),
+        edges: new vis.DataSet(edges)
+      };
+
+      const options = {
+        physics: {
+          stabilization: { iterations: 150, updateInterval: 25 },
+          barnesHut: {
+            gravitationalConstant: -3500,
+            centralGravity: 0.25,
+            springLength: 95,
+            springConstant: 0.04,
+            damping: 0.09
+          }
+        },
+        interaction: {
+          hover: true,
+          tooltipDelay: 100,
+          zoomView: true,
+          dragView: true
+        }
+      };
+
+      if (networkInstance) {
+        networkInstance.destroy();
+      }
+
+      networkInstance = new vis.Network(container, data, options);
+
+      networkInstance.on('click', function(params) {
+        if (params.nodes.length > 0) {
+          const nodeId = params.nodes[0];
+          showNetworkNodeDetails(nodeId, factsMap, episodesMap, learningsMap, links);
+        }
+      });
+    }
+
+    function showNetworkNodeDetails(nodeId, factsMap, episodesMap, learningsMap, links) {
+      const drawer = document.getElementById('network-detail-drawer');
+      const badge = document.getElementById('drawer-entity-badge');
+      const title = document.getElementById('drawer-title');
+      const body = document.getElementById('drawer-body');
+      if (!drawer || !title || !body) return;
+
+      title.innerText = nodeId;
+
+      let layerHtml = '';
+      if (factsMap.has(nodeId)) {
+        const f = factsMap.get(nodeId);
+        badge.innerText = 'Fact (Layer 1)';
+        badge.style.background = '#1f6feb';
+        layerHtml = `
+          <div style="margin-bottom:12px; background:var(--bg); border:1px solid var(--card-border); padding:10px; border-radius:6px;">
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Category: ${escapeHtml(f.category || '-')}</div>
+            <div style="color:var(--text-bright);">${escapeHtml(f.fact)}</div>
+            ${f.keywords ? `<div style="font-size:0.75rem; color:var(--accent); margin-top:6px;">🏷️ ${escapeHtml(f.keywords)}</div>` : ''}
+          </div>
+        `;
+      } else if (episodesMap.has(nodeId)) {
+        const ep = episodesMap.get(nodeId);
+        badge.innerText = 'Episode (Layer 2)';
+        badge.style.background = '#9e6a03';
+        layerHtml = `
+          <div style="margin-bottom:12px; background:var(--bg); border:1px solid var(--card-border); padding:10px; border-radius:6px;">
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Topic: ${escapeHtml(ep.topic || '-')} | Status: ${escapeHtml(ep.status || '-')}</div>
+            <div style="font-weight:600; color:var(--text-bright); margin-bottom:4px;">${escapeHtml(ep.title || ep.id)}</div>
+            <div style="color:var(--text);">${escapeHtml(ep.narrative || '')}</div>
+          </div>
+        `;
+      } else if (learningsMap.has(nodeId)) {
+        const l = learningsMap.get(nodeId);
+        badge.innerText = 'Learning (Layer 3)';
+        badge.style.background = '#238636';
+        layerHtml = `
+          <div style="margin-bottom:12px; background:var(--bg); border:1px solid var(--card-border); padding:10px; border-radius:6px;">
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Category: ${escapeHtml(l.category || '-')}</div>
+            <div style="color:var(--text-bright);">${escapeHtml(l.insight)}</div>
+            ${l.context ? `<div style="font-size:0.75rem; color:var(--text-muted); margin-top:6px;">Context: ${escapeHtml(l.context)}</div>` : ''}
+          </div>
+        `;
+      } else {
+        badge.innerText = 'Entity (Layer 4)';
+        badge.style.background = '#6e40c9';
+        layerHtml = `<p style="color:var(--text-muted); margin-bottom:12px;">Relational node in knowledge graph.</p>`;
+      }
+
+      // Outgoing and Incoming links
+      const outgoing = links.filter(l => l.source_id === nodeId);
+      const incoming = links.filter(l => l.target_id === nodeId);
+
+      let linksHtml = '<h5 style="color:var(--text-bright); margin-bottom:6px; font-size:0.85rem;">Connected Relations:</h5>';
+      if (outgoing.length === 0 && incoming.length === 0) {
+        linksHtml += '<div style="color:var(--text-muted); font-size:0.75rem;">No active relations.</div>';
+      } else {
+        linksHtml += '<div style="display:flex; flex-direction:column; gap:6px;">';
+        outgoing.forEach(l => {
+          linksHtml += `
+            <div style="background:var(--bg); padding:6px 8px; border-radius:4px; font-size:0.75rem; border:1px solid var(--card-border);">
+              <span style="color:var(--text-muted);">OUT:</span> 
+              <span class="entity-relation-pill" style="font-size:0.65rem;">${escapeHtml(l.relation)}</span> ➔ 
+              <span style="color:var(--accent);">${escapeHtml(l.target_id)}</span>
+            </div>
+          `;
+        });
+        incoming.forEach(l => {
+          linksHtml += `
+            <div style="background:var(--bg); padding:6px 8px; border-radius:4px; font-size:0.75rem; border:1px solid var(--card-border);">
+              <span style="color:var(--text-muted);">IN:</span> 
+              <span style="color:var(--accent);">${escapeHtml(l.source_id)}</span> ➔ 
+              <span class="entity-relation-pill" style="font-size:0.65rem;">${escapeHtml(l.relation)}</span>
+            </div>
+          `;
+        });
+        linksHtml += '</div>';
+      }
+
+      body.innerHTML = layerHtml + linksHtml;
+      drawer.classList.add('open');
+    }
+
+    function closeNetworkDrawer() {
+      const drawer = document.getElementById('network-detail-drawer');
+      if (drawer) drawer.classList.remove('open');
+    }
+
+    function resetNetworkView() {
+      if (networkInstance) {
+        networkInstance.fit({ animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+      }
     }
 
     function renderSnapshots(snapshots, force = false) {
@@ -1746,7 +2127,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       }
     });
 
-    function showConfirmModal({ title, icon = '❓', message, bulletPoints = [], confirmText = 'Confirm', confirmStyle = 'btn', onConfirm }) {
+    function showConfirmModal({ title, icon = '❓', message, bulletPoints = [], extraHtml = '', confirmText = 'Confirm', confirmStyle = 'btn', onConfirm }) {
       document.getElementById('modal-icon').innerText = icon;
       document.getElementById('modal-title').innerText = title;
 
@@ -1754,8 +2135,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       if (bulletPoints && bulletPoints.length > 0) {
         bodyHtml += `<ul class="modal-checklist">` + bulletPoints.map(p => `<li><span>${escapeHtml(p)}</span></li>`).join('') + `</ul>`;
       }
+      if (extraHtml) {
+        bodyHtml += extraHtml;
+      }
       document.getElementById('modal-body').innerHTML = bodyHtml;
-
 
       const footer = document.getElementById('modal-footer');
       footer.innerHTML = `
@@ -2007,27 +2390,44 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
 
     function optimizeDb() {
+      const extraHtml = `
+        <div style="margin-top:14px; padding:10px 12px; background:rgba(88,166,255,0.06); border:1px solid rgba(88,166,255,0.25); border-radius:6px;">
+          <label style="display:flex; align-items:flex-start; gap:9px; cursor:pointer; font-size:0.88rem; color:var(--text-bright); user-select:none;">
+            <input type="checkbox" id="chk-opt-consolidate" style="margin-top:3px; cursor:pointer; accent-color:var(--accent);">
+            <div>
+              <span style="font-weight:600;">🧠 Include Semantic Consolidation (LLM Deduplication)</span>
+              <div style="font-size:0.78rem; color:var(--text-muted); margin-top:2px;">
+                Uses LLM background inference to detect overlapping facts, merge redundancies, rewrite graph relations, and write audit logs.
+              </div>
+            </div>
+          </label>
+        </div>
+      `;
+
       showConfirmModal({
-        title: '🧹 Run Full Memory Optimization',
+        title: '🧹 Run Memory Optimization',
         icon: '🧹',
-        message: 'Execute complete cognitive memory engine maintenance, semantic deduplication, and database compacting.',
+        message: 'Execute cognitive memory engine maintenance, index synchronization, and database compacting.',
         bulletPoints: [
           '📸 Create snapshot backup in ~/.gemini/archive (with 20-snapshot retention)',
           '⏳ Episode state decay (active ➔ cooling ➔ historic)',
-          '🧠 Semantic LLM fact deduplication & consolidation',
           '🗑️ Automatic queue pruning (> 7 days retention)',
           '🔍 Rebuild all SQLite FTS5 full-text search indexes',
           '🗜️ Execute SQLite VACUUM database compaction'
         ],
+        extraHtml: extraHtml,
         confirmText: 'Start Optimization',
         onConfirm: async () => {
           const btn = document.getElementById('btn-optimize');
           const origText = btn ? btn.innerText : '🧹 Optimize DB';
+          const chk = document.getElementById('chk-opt-consolidate');
+          const shouldConsolidate = chk ? chk.checked : false;
+
           if (btn) {
             btn.disabled = true;
-            btn.innerText = '⏳ Optimizing...';
+            btn.innerText = shouldConsolidate ? '🧠 Consolidating...' : '⏳ Optimizing...';
           }
-          showToast('Database optimization started...', 'info', 4000);
+          showToast(shouldConsolidate ? 'Memory optimization & LLM consolidation started...' : 'Database optimization started...', 'info', 4000);
 
           try {
             const res = await fetch('/api/optimize', {
@@ -2036,14 +2436,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                 'Content-Type': 'application/json',
                 'X-Dashboard-Token': DASHBOARD_TOKEN
               },
-              body: JSON.stringify({ user: currentProfile })
+              body: JSON.stringify({ user: currentProfile, consolidate: shouldConsolidate })
             });
             const data = await res.json();
             if (data.status === 'ok') {
               showResultModal({
                 title: '✅ Optimization Completed',
                 icon: '🧹',
-                message: 'All memory layers and FTS5 indexes were optimized successfully.',
+                message: shouldConsolidate ? 'Memory layers, semantic consolidation, and FTS5 indexes were optimized successfully.' : 'All memory layers and FTS5 indexes were optimized successfully.',
                 logOutput: data.message
               });
               showToast('Memory database optimized successfully!', 'success', 3500);
@@ -2414,12 +2814,16 @@ class MemoryDashboardHandler(BaseHTTPRequestHandler):
                 env = os.environ.copy()
                 env["AGY_MEMORY_DB"] = prof["db_path"]
                 env["AGY_TURN_QUEUE_DB"] = prof["queue_db_path"]
+                should_consolidate = bool(req_data.get("consolidate", False))
+                cmd = [sys.executable, str(main_bin), "optimize", "--apply"]
+                if should_consolidate:
+                    cmd.append("--consolidate")
                 res = subprocess.run(
-                    [sys.executable, str(main_bin), "optimize", "--apply"],
+                    cmd,
                     env=env,
                     capture_output=True,
                     text=True,
-                    timeout=240
+                    timeout=300
                 )
                 output = (res.stdout or "").strip()
                 err = (res.stderr or "").strip()
@@ -2611,21 +3015,34 @@ class MemoryDashboardHandler(BaseHTTPRequestHandler):
                     """, (fts_query,))
                     fts_learnings = [{"id": r[0], "category": r[1], "insight": r[2]} for r in cursor.fetchall()]
 
-                # --- Semantic Vector Search ---
+                # --- Semantic Vector Search with Freshness Pre-filtering ---
                 vec_facts = []
                 vec_episodes = []
                 vec_learnings = []
                 if HAS_DASHBOARD_EMBEDDER and VECTOR_SEARCH_ENABLED and embed_text:
                     q_emb = embed_text(q)
                     if q_emb is not None:
+                        cur_gen = get_db_generation(conn) if get_db_generation else ""
+                        active_fp = get_active_model_fingerprint(conn) if get_active_model_fingerprint else ""
+
                         try:
                             cursor.execute("""
+                                WITH eligible AS (
+                                    SELECT s.entity_id
+                                    FROM vector_index_state s
+                                    JOIN memories m ON m.id = s.entity_id
+                                    JOIN entity_revisions r ON r.entity_type = 'memories' AND r.entity_id = s.entity_id
+                                    WHERE s.entity_type = 'memories'
+                                      AND s.indexed_revision = r.revision
+                                      AND s.generation = ?
+                                      AND s.model_fingerprint = ?
+                                )
                                 SELECT m.id, m.category, m.fact
                                 FROM vec_memories v
                                 JOIN memories m ON m.id = v.id
-                                WHERE v.embedding MATCH ? AND k = 10
+                                WHERE v.embedding MATCH ? AND k = 10 AND v.id IN eligible
                                 ORDER BY v.distance ASC
-                            """, (q_emb,))
+                            """, (cur_gen, active_fp, q_emb))
                             vec_facts = [{"id": r[0], "category": r[1], "fact": r[2]} for r in cursor.fetchall()]
                         except Exception as e:
                             if log_vec_query_failure:
@@ -2633,12 +3050,22 @@ class MemoryDashboardHandler(BaseHTTPRequestHandler):
 
                         try:
                             cursor.execute("""
+                                WITH eligible AS (
+                                    SELECT s.entity_id
+                                    FROM vector_index_state s
+                                    JOIN episodes e ON e.id = s.entity_id
+                                    JOIN entity_revisions r ON r.entity_type = 'episodes' AND r.entity_id = s.entity_id
+                                    WHERE s.entity_type = 'episodes'
+                                      AND s.indexed_revision = r.revision
+                                      AND s.generation = ?
+                                      AND s.model_fingerprint = ?
+                                )
                                 SELECT e.id, e.topic, e.title, e.period, e.status, e.narrative
                                 FROM vec_episodes v
                                 JOIN episodes e ON e.id = v.id
-                                WHERE v.embedding MATCH ? AND k = 10
+                                WHERE v.embedding MATCH ? AND k = 10 AND v.id IN eligible
                                 ORDER BY v.distance ASC
-                            """, (q_emb,))
+                            """, (cur_gen, active_fp, q_emb))
                             vec_episodes = [{"id": r[0], "topic": r[1], "title": r[2], "period": r[3], "status": r[4], "narrative": r[5]} for r in cursor.fetchall()]
                         except Exception as e:
                             if log_vec_query_failure:
@@ -2646,12 +3073,22 @@ class MemoryDashboardHandler(BaseHTTPRequestHandler):
 
                         try:
                             cursor.execute("""
+                                WITH eligible AS (
+                                    SELECT s.entity_id
+                                    FROM vector_index_state s
+                                    JOIN learnings l ON l.id = s.entity_id
+                                    JOIN entity_revisions r ON r.entity_type = 'learnings' AND r.entity_id = s.entity_id
+                                    WHERE s.entity_type = 'learnings'
+                                      AND s.indexed_revision = r.revision
+                                      AND s.generation = ?
+                                      AND s.model_fingerprint = ?
+                                )
                                 SELECT l.id, l.category, l.insight
                                 FROM vec_learnings v
                                 JOIN learnings l ON l.id = v.id
-                                WHERE v.embedding MATCH ? AND k = 10
+                                WHERE v.embedding MATCH ? AND k = 10 AND v.id IN eligible
                                 ORDER BY v.distance ASC
-                            """, (q_emb,))
+                            """, (cur_gen, active_fp, q_emb))
                             vec_learnings = [{"id": r[0], "category": r[1], "insight": r[2]} for r in cursor.fetchall()]
                         except Exception as e:
                             if log_vec_query_failure:
