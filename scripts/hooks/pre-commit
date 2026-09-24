@@ -20,6 +20,8 @@ SCRIPTS=(
     "scripts/vector_index_cli.py"
     "scripts/queue_cli.py"
     "scripts/reindex_vectors.py"
+    "scripts/harness/memory-enqueue.py"
+    "scripts/harness/memory-prefetch.py"
     "scripts/install_macbook.sh"
 )
 

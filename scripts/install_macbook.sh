@@ -25,6 +25,8 @@ chmod +x "${TARGET_DIR}/scripts/backfill_recent.py" 2>/dev/null || true
 chmod +x "${TARGET_DIR}/scripts/vector_index_cli.py" 2>/dev/null || true
 chmod +x "${TARGET_DIR}/scripts/queue_cli.py" 2>/dev/null || true
 chmod +x "${TARGET_DIR}/scripts/reindex_vectors.py" 2>/dev/null || true
+chmod +x "${TARGET_DIR}/scripts/harness/memory-enqueue.py" 2>/dev/null || true
+chmod +x "${TARGET_DIR}/scripts/harness/memory-prefetch.py" 2>/dev/null || true
 chmod +x "${TARGET_DIR}/scripts/install_macbook.sh" 2>/dev/null || true
 chmod +x "${TARGET_DIR}/scripts/hooks/pre-commit" 2>/dev/null || true
 

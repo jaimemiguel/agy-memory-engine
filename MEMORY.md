@@ -88,4 +88,12 @@ Configuration is driven by `/Volumes/Extern2TB/GitHub/agy-memory-engine/.env` wi
    - In `memory_inference.py`, Antigravity CLI invocations are isolated with `cwd="/tmp"` and `HOME="${HOME:-/Users/jmb}"` to prevent the CLI from treating background extraction as an active git workspace session.
    - `_extract_json_payload` uses progressive extraction (exact JSON -> markdown fenced blocks -> `json.JSONDecoder().raw_decode` stream parsing -> balanced brace fallback) to eliminate parse failures when conversational preamble or markdown code blocks accompany the payload.
    - `scripts/cron_runner.sh` guarantees `HOME="${HOME:-/Users/jmb}"` so macOS cron invocations cleanly resolve user bins and settings.
+7. **Jev Relevance Gate for Retrieval Filtering**:
+   - Integrates upstream Jev relevance gating (`jev_gate.py`) to prune off-topic, stale, or extraneous memory candidates before presenting them to the agent context.
+   - Evaluates all candidates in a single multi-question boolean request keyed `m1..mN` with configurable threshold floor (`AGY_MEMORY_JEV_GATE_FLOOR=0.75`), wall-clock deadline (`AGY_MEMORY_JEV_GATE_TIMEOUT=6.0`), and candidate count/size bounds.
+   - Fail-open resilience: if the API key (`AGY_JEV_API_KEY` or `JEV_API_KEY` in `.env` or `~/.config/agy/sage.env`) is absent, invalid, or encounters network/formatting exceptions, the gate immediately fails-open, preserving all candidate memories without degradation.
+   - Covers both agentic MCP `search_memory` retrieval and CLI `prefetch`.
+8. **Harness Hook Scripts Tracking**:
+   - `scripts/harness/memory-enqueue.py` and `scripts/harness/memory-prefetch.py` provide isolated, trackable turn hooks surviving working-tree cleanup routines.
+   - Registered in `scripts/install_macbook.sh` and `scripts/hooks/pre-commit` to guarantee executable permissions and environment integrity.
 
