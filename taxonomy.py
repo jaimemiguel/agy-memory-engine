@@ -80,6 +80,9 @@ RELATION_MAPPINGS: Dict[str, Tuple[str, bool]] = {
     "administers": ("managed_by", True),       # Inverted: A administers B -> B managed_by A
     "manages": ("managed_by", True),           # Inverted: A manages B -> B managed_by A
     "owns": ("owned_by", True),                # Inverted: A owns B -> B owned_by A
+    # Inverse relationship mapping for component/tool usage:
+    # When LLM emits 'Feature used_by System', map inverted to canonical 'System uses Feature'.
+    "used_by": ("uses", True),
 
     "integrates_with": ("connects_to", False),
     "interfaces_with": ("connects_to", False),
@@ -96,6 +99,9 @@ RELATION_MAPPINGS: Dict[str, Tuple[str, bool]] = {
     "prescribed_by": ("prescribes", True), # Med prescribed_by Doc -> Doc prescribes Med
     "insured_at": ("insured_by", False),
     "stored_in": ("stores", True),             # Item stored_in Location -> Location stores Item
+    # Inverse relationship mapping for physical/virtual storage targets:
+    # When LLM emits 'File/DB stored_on Host/Volume', map inverted to canonical 'Host/Volume stores File/DB'.
+    "stored_on": ("stores", True),
     "resides_in": ("located_at", False),
     "situated_at": ("located_at", False),
 }

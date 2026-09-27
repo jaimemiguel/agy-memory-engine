@@ -246,6 +246,10 @@ class CoreHardeningTests(unittest.TestCase):
     def test_canonical_writers_and_prescription_inverse(self):
         from scripts.migrate_v2_to_v2_1 import map_relation
         self.assertEqual(map_relation('med', 'doctor', 'prescribed_by'), ('doctor', 'med', 'prescribes'))
+        # Verify stored_on maps to inverted 'stores' (target stores source)
+        self.assertEqual(map_relation('data.db', 'extern2tb', 'stored_on'), ('extern2tb', 'data.db', 'stores'))
+        # Verify used_by maps to inverted 'uses' (target uses source)
+        self.assertEqual(map_relation('tool', 'system', 'used_by'), ('system', 'tool', 'uses'))
         memory.upsert_fact('f', 'infrastructure', 'fact')
         with self.assertRaises(ValueError):
             memory.upsert_learning('l', 'nonsense', 'insight')
