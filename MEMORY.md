@@ -96,4 +96,7 @@ Configuration is driven by `/Volumes/Extern2TB/GitHub/agy-memory-engine/.env` wi
 8. **Harness Hook Scripts Tracking**:
    - `scripts/harness/memory-enqueue.py` and `scripts/harness/memory-prefetch.py` provide isolated, trackable turn hooks surviving working-tree cleanup routines.
    - Registered in `scripts/install_macbook.sh` and `scripts/hooks/pre-commit` to guarantee executable permissions and environment integrity.
+9. **Taxonomy & Knowledge Graph Relation Normalization**:
+   - `taxonomy.py` enforces canonical relation standards across Knowledge Graph Layer 4.
+   - `RELATION_MAPPINGS` provides directional inversion and semantic mapping for common LLM extraction variants, including `'stored_on' -> ('stores', True)` (`Item stored_on Host` -> `Host stores Item`) and `'used_by' -> ('uses', True)` (`Component used_by System` -> `System uses Component`), preventing queue transaction aborts on knowledge graph validation.
 
