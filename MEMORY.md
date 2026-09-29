@@ -98,5 +98,13 @@ Configuration is driven by `/Volumes/Extern2TB/GitHub/agy-memory-engine/.env` wi
    - Registered in `scripts/install_macbook.sh` and `scripts/hooks/pre-commit` to guarantee executable permissions and environment integrity.
 9. **Taxonomy & Knowledge Graph Relation Normalization**:
    - `taxonomy.py` enforces canonical relation standards across Knowledge Graph Layer 4.
-   - `RELATION_MAPPINGS` provides directional inversion and semantic mapping for common LLM extraction variants, including `'stored_on' -> ('stores', True)` (`Item stored_on Host` -> `Host stores Item`) and `'used_by' -> ('uses', True)` (`Component used_by System` -> `System uses Component`), preventing queue transaction aborts on knowledge graph validation.
+   - `RELATION_MAPPINGS` provides directional inversion and semantic mapping for common LLM extraction variants, including `'stored_on' -> ('stores', True)` (`Item stored_on Host` -> `Host stores Item`), `'stored_at' -> ('stores', True)`, and `'used_by' -> ('uses', True)` (`Component used_by System` -> `System uses Component`), preventing queue transaction aborts on knowledge graph validation.
+10. **v2.5.0 Upstream Synchronization & Hardening**:
+    - **Expressive Knowledge Graph Relations**: Broadened canonical relations from 26 to 32 (`documents`, `configures`, `applies_to`, `resolves`, `targets`, `supports`) and inverse mappings, reducing generic `related_to` over-linking. Expanded learning domains with `ux`, `dev`, `infra`, and `media`.
+    - **Decoupled Search Graph Expansion**: Prefetch and retrieval now decouple static rule/preference injections from 1-hop entity graph expansion (`bc753c4`), ensuring prompt context only expands around query-matched facts.
+    - **Adaptive Batched Semantic Memory Consolidation**: `consolidate_memories` chunks facts into adaptive batches of ≤25 items per inference pass (`0ece354`), preventing CLI subprocess timeouts on growing databases, and separates proposal generation from atomic application (`0c08e93`).
+    - **Turn Queue Requeue CLI**: Added `scripts/queue_cli.py requeue` to safely return turns marked `failed` back to `pending` with attempt counts reset, ensuring failed turns from transient API blips can be cleanly retried.
+    - **FTS5 & Trigram Index Integrity**: `memories_trigram` is synchronized via triggers and rebuilt during routine `rebuild_fts` in `optimize_db`.
+    - **Calendar Hygiene**: Past one-off calendar appointments and reservations are auto-pruned during `optimize_db`.
+    - **Antigravity Hook Unwrapping**: `memory-enqueue.py` unwraps `<USER_REQUEST>` tags and joins multi-turn planner responses cleanly.
 
