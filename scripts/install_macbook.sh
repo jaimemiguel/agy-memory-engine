@@ -51,4 +51,14 @@ if [ -d "${TARGET_DIR}/.git" ]; then
     echo "🪝 Git pre-commit hook installed in .git/hooks/pre-commit"
 fi
 
+# 5. Register and load LaunchAgent (macOS Aqua session)
+if [ "$(uname)" == "Darwin" ] && [ -f "${TARGET_DIR}/launchd/com.antigravity.memory-worker.plist" ]; then
+    mkdir -p "${HOME}/Library/LaunchAgents"
+    cp "${TARGET_DIR}/launchd/com.antigravity.memory-worker.plist" "${HOME}/Library/LaunchAgents/com.antigravity.memory-worker.plist"
+    chmod 644 "${HOME}/Library/LaunchAgents/com.antigravity.memory-worker.plist"
+    launchctl unload "${HOME}/Library/LaunchAgents/com.antigravity.memory-worker.plist" 2>/dev/null || true
+    launchctl load "${HOME}/Library/LaunchAgents/com.antigravity.memory-worker.plist" 2>/dev/null || true
+    echo "🚀 LaunchAgent registered: ~/Library/LaunchAgents/com.antigravity.memory-worker.plist"
+fi
+
 echo "✅ Setup complete!"

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.antigravity.memory-worker</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Volumes/Extern2TB/GitHub/agy-memory-engine/scripts/cron_runner.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>300</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Volumes/Extern2TB/GitHub/_Logs/agy-memory-engine/launchagent_out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Volumes/Extern2TB/GitHub/_Logs/agy-memory-engine/launchagent_err.log</string>
+</dict>
+</plist>
