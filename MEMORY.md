@@ -116,3 +116,7 @@ Configuration is driven by `/Volumes/Extern2TB/GitHub/agy-memory-engine/.env` wi
     - **Queue Recovery**: Drained all backlogged turns via `queue_cli.py requeue` and verified that DailyRecon memory engine pulse recovers to `healthy` with 0 failed turns.
 
 
+
+
+## 📝 Maintenance
+* **2026-10-03**: Merged `upstream/main` (1 upstream commits) via DailyRecon Safe Sync Upstream.
