@@ -14,8 +14,8 @@
     <key>RunAtLoad</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/Volumes/Extern2TB/GitHub/_Logs/agy-memory-engine/launchagent_out.log</string>
+    <string>/Users/jmb/Library/Logs/antigravity_memory_worker_out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Volumes/Extern2TB/GitHub/_Logs/agy-memory-engine/launchagent_err.log</string>
+    <string>/Users/jmb/Library/Logs/antigravity_memory_worker_err.log</string>
 </dict>
 </plist>
