@@ -2,7 +2,7 @@
 # ==============================================================================
 # AGY Memory Engine — Git Pre-Commit Hook
 # ==============================================================================
-# Verifies script executable permissions and installer synchronization
+# Enforces executable bits on key scripts and CLI utilities
 # ==============================================================================
 set -euo pipefail
 
@@ -22,7 +22,6 @@ SCRIPTS=(
     "scripts/reindex_vectors.py"
     "scripts/harness/memory-enqueue.py"
     "scripts/harness/memory-prefetch.py"
-    "scripts/install_macbook.sh"
 )
 
 for script in "${SCRIPTS[@]}"; do
@@ -31,11 +30,5 @@ for script in "${SCRIPTS[@]}"; do
         echo "🔧 Corrected executable permission on: ${script}"
     fi
 done
-
-# 2. Check that install_macbook.sh exists
-if [ ! -f "${REPO_ROOT}/scripts/install_macbook.sh" ]; then
-    echo "❌ Error: scripts/install_macbook.sh is missing."
-    exit 1
-fi
 
 exit 0

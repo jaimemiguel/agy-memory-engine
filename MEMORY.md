@@ -79,9 +79,9 @@ Configuration is driven by `/Volumes/Extern2TB/GitHub/agy-memory-engine/.env` wi
    - `~/.gemini/config/hooks.json` registers `scripts/auto_sync_hook.py` on `Stop`.
 3. **Crontab Synchronization**:
    - Configured on `jims-mac-pro` with active entry synchronized to `/Volumes/Extern2TB/GitHub/config/jims-mac-pro/crontab.txt`.
-4. **Installer & Hook**:
-   - `scripts/install_macbook.sh` maintains permissions, directory structures, and symlink `~/bin/agy-memory`.
+4. **Pre-Commit Enforcement & Symlink Setup**:
    - `scripts/hooks/pre-commit` enforces executable permissions on all runners and utilities.
+   - Symlink registered at `~/bin/agy-memory -> agy_memory.py`.
 5. **Historical Sessions Backfill Utility**:
    - `scripts/backfill_recent.py` scans `~/.gemini/antigravity-cli/brain/` for the most recent completed conversation sessions, extracts non-trivial user prompt and assistant response turns, enqueues them into `turn_queue.db`, and executes batched calm-memory LLM extraction into `memory.db`.
 6. **CLI Inference Sandbox Isolation & Robust Parsing**:
@@ -95,7 +95,7 @@ Configuration is driven by `/Volumes/Extern2TB/GitHub/agy-memory-engine/.env` wi
    - Covers both agentic MCP `search_memory` retrieval and CLI `prefetch`.
 8. **Harness Hook Scripts Tracking**:
    - `scripts/harness/memory-enqueue.py` and `scripts/harness/memory-prefetch.py` provide isolated, trackable turn hooks surviving working-tree cleanup routines.
-   - Registered in `scripts/install_macbook.sh` and `scripts/hooks/pre-commit` to guarantee executable permissions and environment integrity.
+   - Registered in `scripts/hooks/pre-commit` to guarantee executable permissions and environment integrity.
 9. **Taxonomy & Knowledge Graph Relation Normalization**:
    - `taxonomy.py` enforces canonical relation standards across Knowledge Graph Layer 4.
    - `RELATION_MAPPINGS` provides directional inversion and semantic mapping for common LLM extraction variants, including `'stored_on' -> ('stores', True)` (`Item stored_on Host` -> `Host stores Item`), `'stored_at' -> ('stores', True)`, and `'used_by' -> ('uses', True)` (`Component used_by System` -> `System uses Component`), preventing queue transaction aborts on knowledge graph validation.
@@ -114,8 +114,10 @@ Configuration is driven by `/Volumes/Extern2TB/GitHub/agy-memory-engine/.env` wi
     - **Context-Aware Aqua Bridging & Redundant Wrapper Bypass**: Refined `scripts/cron_runner.sh` to check `[ -z "${XPC_SERVICE_NAME:-}" ] && [ "$(launchctl managername 2>/dev/null)" != "Aqua" ]`. When running under headless crontab or detached scripts, it bridges into the Aqua GUI session via `launchctl asuser "${CURRENT_UID}"`; when already running inside Aqua (such as from the LaunchAgent or interactive terminal), it executes Python directly to prevent redundant nesting or permission rejections.
     - **Comprehensive Startup Log Management**: Expanded startup log trimming loop in `scripts/cron_runner.sh` to enforce the 1,000-line ceiling across both legacy external paths and active `~/Library/Logs/` files.
     - **Queue Recovery**: Drained all backlogged turns via `queue_cli.py requeue` and verified that DailyRecon memory engine pulse recovers to `healthy` with 0 failed turns.
-
-
+12. **MacBook Installer & Workspace Standards Alignment**:
+    - **Retirement of `scripts/install_macbook.sh`**:
+      - Retired `scripts/install_macbook.sh` and decoupled installer synchronization checks from `scripts/hooks/pre-commit`.
+      - **Architectural Policy Rationale**: Strict compliance with the workspace-wide *MacBook Installer & Script Synchronization Mandate*, which designates MacBook installers exclusively for client application deployments (`superchargers` and `maclocate`). Background services, daemons, and system CLI utilities (`agy-memory-engine`) avoid maintaining standalone `install_macbook.sh` scripts, relying instead on LaunchAgent definitions (`launchd/com.antigravity.memory-worker.plist`), standard symlinks (`~/bin/agy-memory`), and `uv` virtual environment synchronization.
 
 
 ## 📝 Maintenance
