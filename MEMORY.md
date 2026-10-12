@@ -120,5 +120,11 @@ Configuration is driven by `/Volumes/Extern2TB/GitHub/agy-memory-engine/.env` wi
       - **Architectural Policy Rationale**: Strict compliance with the workspace-wide *MacBook Installer & Script Synchronization Mandate*, which designates MacBook installers exclusively for client application deployments (`superchargers` and `maclocate`). Background services, daemons, and system CLI utilities (`agy-memory-engine`) avoid maintaining standalone `install_macbook.sh` scripts, relying instead on LaunchAgent definitions (`launchd/com.antigravity.memory-worker.plist`), standard symlinks (`~/bin/agy-memory`), and `uv` virtual environment synchronization.
 
 
+13. **Upstream Synchronization (v2.5.1 — Learning Quality & Dashboard Performance)**:
+    - **Tightened Experiential Learning Extraction Criteria**: Updated LLM extraction prompt in `agy_memory.py` to default to empty arrays and require at least one of 4 specific event triggers: (a) user correction & directive, (b) explicit rule/heuristic (e.g. `/learn`), (c) enduring personal preference, or (d) verified architectural dead-end/discovery. Strictly excludes routine coding, syntax fixes, assistant reflections, and one-time bug fixes from permanent `learnings`.
+    - **Learnings Consolidation Engine**: Added `consolidate_learnings()` in `agy_memory.py` mirroring fact consolidation, supporting proposal export, dry-run previews, automated merges, purges, and entity link rewiring.
+    - **Dashboard Local Static Assets & Gzip Compression**: Replaced external `cdnjs` delivery of `vis-network.min.js` with local bundled static asset (`static/vis-network.min.js`), added gzip HTTP compression, preserved security headers and `Set-Cookie` on authenticated responses, and introduced lazy tab rendering to eliminate unnecessary client-side DOM re-renders.
+
 ## 📝 Maintenance
+* **2026-10-12**: Merged `upstream/main` (4 upstream commits: tightened learning extraction criteria, learnings consolidation, dashboard gzip compression, and local static assets).
 * **2026-10-03**: Merged `upstream/main` (1 upstream commits) via DailyRecon Safe Sync Upstream.

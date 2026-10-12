@@ -12,3 +12,4 @@ __pycache__/
 *.maintenance.lock
 *.worker.lock
 .venv/
+rollback_pr2.sh
