@@ -125,6 +125,13 @@ Configuration is driven by `/Volumes/Extern2TB/GitHub/agy-memory-engine/.env` wi
     - **Learnings Consolidation Engine**: Added `consolidate_learnings()` in `agy_memory.py` mirroring fact consolidation, supporting proposal export, dry-run previews, automated merges, purges, and entity link rewiring.
     - **Dashboard Local Static Assets & Gzip Compression**: Replaced external `cdnjs` delivery of `vis-network.min.js` with local bundled static asset (`static/vis-network.min.js`), added gzip HTTP compression, preserved security headers and `Set-Cookie` on authenticated responses, and introduced lazy tab rendering to eliminate unnecessary client-side DOM re-renders.
 
+14. **Upstream Synchronization (v2.6.0 — Continuous Automated Consolidation & Ephemeral Fact Pruning)**:
+    - **Continuous Automated Learnings Consolidation**: Integrated `consolidate_learnings()` directly into `optimize_db()`, ensuring that routine automated optimization cycles (nightly cron at `04:30` and background workers) automatically consolidate experiential learnings alongside atomic facts, deduplicating overlapping heuristics and purging transient bugfix notes.
+    - **Extended Ephemeral Fact Lifecycle & Pruning**: Upgraded `prune_stale_calendar_facts()` into a unified ephemeral fact engine with a 14-day grace window. Identifies and cleans up transient booking, travel, and shopping facts (`%hotel_%`, `%flug_%`, `%hammam_%`, `%rueckreise_%`, `shopping.%order_%`) while strictly retaining permanent long-term dates (medical, contracts, future bookings).
+    - **Extraction Prompt Hardening**: Tightened LLM learning extraction criteria down to 3 core triggers (user corrections, explicit rules/heuristics, and stable personal preferences), eliminating routine technical debugging noise.
+    - **Environment Config Precedence**: Ensured `~/.gemini/memory.env` user configurations cleanly override project-level `.env` defaults in `config.py`.
+
 ## 📝 Maintenance
+* **2026-10-23**: Merged `upstream/main` (2 upstream commits: v2.6.0 continuous automated learnings consolidation into `optimize_db()`, extended ephemeral fact pruning with 14-day grace window, and config precedence hardening).
 * **2026-10-12**: Merged `upstream/main` (4 upstream commits: tightened learning extraction criteria, learnings consolidation, dashboard gzip compression, and local static assets).
 * **2026-10-03**: Merged `upstream/main` (1 upstream commits) via DailyRecon Safe Sync Upstream.
